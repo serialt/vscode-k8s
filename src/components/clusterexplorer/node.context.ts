@@ -16,7 +16,7 @@ const KUBERNETES_CLUSTER = "vsKubernetes.cluster";
 const MINIKUBE_CLUSTER = "vsKubernetes.minikubeCluster";
 
 export class ContextNode extends ClusterExplorerNodeImpl implements ClusterExplorerContextNode {
-    constructor(readonly contextName: string, readonly kubectlContext: kubectlUtils.KubectlContext) {
+    constructor(readonly contextName: string, readonly kubectlContext: kubectlUtils.KubectlContext, readonly displayName = contextName, readonly kubeconfigPath?: string) {
         super(NODE_TYPES.context);
     }
     readonly nodeType = NODE_TYPES.context;
@@ -42,12 +42,19 @@ export class ContextNode extends ClusterExplorerNodeImpl implements ClusterExplo
         return [];
     }
     getTreeItem(): vscode.TreeItem | Thenable<vscode.TreeItem> {
-        const treeItem = new vscode.TreeItem(this.contextName, vscode.TreeItemCollapsibleState.Collapsed);
+        const treeItem = new vscode.TreeItem(this.displayName, vscode.TreeItemCollapsibleState.Collapsed);
         treeItem.contextValue = this.clusterType;
         treeItem.iconPath = this.identifyClusterProviderIcon(this.kubectlContext.provider);
         if (!this.kubectlContext || !this.kubectlContext.active) {
             treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
             treeItem.contextValue += ".inactive";
+            if (this.kubeconfigPath) {
+                treeItem.command = {
+                    command: 'extension.vsKubernetesUseKubeconfig',
+                    title: 'Set Kubeconfig',
+                    arguments: [this.kubeconfigPath]
+                };
+            }
         }
         if (this.kubectlContext) {
             treeItem.tooltip = `${this.kubectlContext.contextName}\nCluster: ${this.kubectlContext.clusterName}`;

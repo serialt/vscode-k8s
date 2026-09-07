@@ -18,6 +18,27 @@ interface Config {
     "current-context"?: string;
 }
 
+export function getKubeconfigName(configText: string): string | undefined {
+    const config = yaml.load(configText) as Config | undefined;
+    return config?.['current-context'] || config?.contexts?.[0]?.name || config?.clusters?.[0]?.name;
+}
+
+export function getKubeconfigContextDetails(configText: string): { contextName: string; clusterName: string; userName: string; provider: string } | undefined {
+    const config = yaml.load(configText) as any;
+    const context = config?.contexts?.find((item: any) => item.name === config['current-context']) || config?.contexts?.[0];
+    if (!context) {
+        return undefined;
+    }
+    const cluster = config.clusters?.find((item: any) => item.name === context.context?.cluster);
+    const azurePattern = /(^|\.)azmk8s\.io(?=[:\/?]|$)/i;
+    return {
+        contextName: context.name,
+        clusterName: context.context?.cluster || context.name,
+        userName: context.context?.user || '',
+        provider: azurePattern.test(cluster?.cluster?.server || '') ? 'AKS' : ''
+    };
+}
+
 export interface HostKubeconfigPath {
     readonly pathType: 'host';
     readonly hostPath: string;
@@ -109,12 +130,12 @@ export function getKubeconfigPath(): KubeconfigPath {
     };
 }
 
-export async function mergeToKubeconfig(newConfigText: string): Promise<void> {
+export async function mergeToKubeconfig(newConfigText: string): Promise<string | undefined> {
     const kubeconfigPath = getKubeconfigPath();
 
     if (kubeconfigPath.pathType === 'wsl') {
         vscode.window.showErrorMessage("You are on Windows, but are using WSL-based tools. We can't merge into your WSL kubeconfig. Consider running VS Code in WSL using the Remote Extensions.");
-        return;
+        return undefined;
     }
 
     // For multi-path KUBECONFIG, use the first path (where new config should be merged)
@@ -128,7 +149,7 @@ export async function mergeToKubeconfig(newConfigText: string): Promise<void> {
     // null checks
     if (!kubeconfig || !newConfig) {
         vscode.window.showErrorMessage("Error fetching kubeconfig.");
-        return;
+        return undefined;
     }
 
     // Check for duplicate cluster / user / context names
@@ -159,7 +180,7 @@ export async function mergeToKubeconfig(newConfigText: string): Promise<void> {
 
         if (choice === 'Cancel' || !choice) {
             vscode.window.showInformationMessage('Merge cancelled.');
-            return;
+            return undefined;
         }
         renameWithSuffix = choice === 'Keep Both';
     }
@@ -237,4 +258,5 @@ export async function mergeToKubeconfig(newConfigText: string): Promise<void> {
 
     await refreshExplorer();
     await vscode.window.showInformationMessage(`New configuration merged to ${kcfile}`);
+    return newContext?.name;
 }

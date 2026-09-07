@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fsNode from 'fs';
 import * as yaml from 'js-yaml';
-import { mergeToKubeconfig } from '../../../../src/components/kubectl/kubeconfig';
+import { getKubeconfigContextDetails, getKubeconfigName, mergeToKubeconfig } from '../../../../src/components/kubectl/kubeconfig';
 
 // Simulates user clicking a specific button in a warning message dialog.
 // Note: we use callsFake with as any to handle overloaded method signatures.
@@ -72,6 +72,34 @@ suite("Kubeconfig Merge", () => {
             'current-context': opts.contextName
         });
     }
+
+    suite("renaming imported kubeconfig", () => {
+        test("uses the context name as the default display name", () => {
+            const config = makeConfig({
+                clusterName: 'source-cluster',
+                userName: 'source-user',
+                contextName: 'source-context'
+            });
+
+            assert.strictEqual(getKubeconfigName(config), 'source-context');
+        });
+
+        test("reads connection details without changing the kubeconfig", () => {
+            const config = makeConfig({
+                clusterName: 'source-cluster',
+                userName: 'source-user',
+                contextName: 'source-context'
+            });
+
+            assert.deepStrictEqual(getKubeconfigContextDetails(config), {
+                contextName: 'source-context',
+                clusterName: 'source-cluster',
+                userName: 'source-user',
+                provider: ''
+            });
+        });
+
+    });
 
     setup(() => {
         sandbox = sinon.createSandbox();

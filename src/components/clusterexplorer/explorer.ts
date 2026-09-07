@@ -11,6 +11,8 @@ import { WatchManager } from '../kubectl/watch';
 import { ExplorerExtender, ExplorerUICustomizer } from './explorer.extension';
 import { ClusterExplorerNode, ClusterExplorerResourceNode } from './node';
 import { ContextNode, MiniKubeContextNode } from './node.context';
+import { getConfiguredClusterNodes } from './cluster-names';
+import { getActiveKubeconfig } from '../config/config';
 
 // Each item in the explorer is modelled as a ClusterExplorerNode.  This
 // is a discriminated union, using a nodeType field as its discriminator.
@@ -285,6 +287,23 @@ export class KubernetesExplorer implements vscode.TreeDataProvider<ClusterExplor
     }
 
     private async getClusters(): Promise<ClusterExplorerNode[]> {
+        const configuredNodes = getConfiguredClusterNodes();
+        if (configuredNodes.length > 0) {
+            const activeKubeconfig = getActiveKubeconfig();
+            return configuredNodes.map((node) => new ContextNode(
+                node.contextName,
+                {
+                    contextName: node.contextName,
+                    clusterName: node.clusterName,
+                    userName: node.userName,
+                    active: node.kubeconfigPath === activeKubeconfig,
+                    provider: node.provider
+                },
+                node.displayName,
+                node.kubeconfigPath
+            ));
+        }
+
         const contexts = await kubectlUtils.getContexts(this.kubectl, { silent: false });  // TODO: turn it silent, cascade errors, and provide an error node
         return contexts.map((context) => {
             // TODO: this is slightly hacky...

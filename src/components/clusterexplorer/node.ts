@@ -19,6 +19,7 @@ export interface ClusterExplorerContextNode extends ClusterExplorerNodeBase {
     readonly nodeType: KubernetesExplorerNodeTypeContext;
     readonly kubectlContext: KubectlContext;
     readonly contextName: string;
+    readonly kubeconfigPath?: string;
 }
 
 export interface ClusterExplorerResourceFolderNode extends ClusterExplorerNodeBase {

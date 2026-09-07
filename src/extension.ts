@@ -76,7 +76,7 @@ import { APIBroker } from './api/contract/api';
 import { apiBroker } from './api/implementation/apibroker';
 import { sleep } from './sleep';
 import { CloudExplorer, CloudExplorerTreeNode } from './components/cloudexplorer/cloudexplorer';
-import { mergeToKubeconfig, getKubeconfigPath, KubeconfigPath } from './components/kubectl/kubeconfig';
+import { getKubeconfigContextDetails, mergeToKubeconfig, getKubeconfigPath, KubeconfigPath } from './components/kubectl/kubeconfig';
 import { PortForwardStatusBarManager } from './components/kubectl/port-forward-ui';
 import { getBuildCommand, getPushCommand } from './image/imageUtils';
 import { getImageBuildTool } from './components/config/config';
@@ -91,6 +91,7 @@ import { setAssetContext } from './assets';
 import { fixOldInstalledBinaryPermissions } from './components/installer/fixwriteablebinaries';
 import { interpolateVariables } from './utils/interpolation';
 import { AKSProvider } from './components/cloudprovider/aksprovider';
+import { addConfiguredClusterNode, getConfiguredClusterNodes, initializeClusterNodeNames, setClusterNodeName } from './components/clusterexplorer/cluster-names';
 
 let explainActive = false;
 let swaggerSpecPromise: Promise<explainer.SwaggerModel | undefined> | null = null;
@@ -137,6 +138,7 @@ export const HELM_TPL_MODE: vscode.DocumentFilter = { language: "helm", scheme: 
 export async function activate(context: vscode.ExtensionContext): Promise<APIBroker> {
     await validateKubeconfigPath();
     setAssetContext(context);
+    initializeClusterNodeNames(context.globalState);
 
     await fixOldInstalledBinaryPermissions(shell);
 
@@ -215,6 +217,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<APIBro
         registerCommand('extension.vsKubernetesUseKubeconfig', useKubeconfigKubernetes),
         registerCommand('extension.vsKubernetesClusterInfo', clusterInfoKubernetes),
         registerCommand('extension.vsKubernetesDeleteContext', deleteContextKubernetes),
+        registerCommand('extension.vsKubernetesRenameContext', (node: ClusterExplorerNode) => renameContextNode(node, treeProvider)),
         registerCommand('extension.vsKubernetesUseNamespace', (explorerNode: ClusterExplorerNode) => { useNamespaceKubernetes(kubectl, explorerNode); } ),
         registerCommand('extension.vsKubernetesDashboard', () => { dashboardKubernetes(kubectl); }),
         registerCommand('extension.vsKubernetesAddWatch', (explorerNode: ClusterExplorerNode) => { addWatch(treeProvider, explorerNode); }),
@@ -2079,31 +2082,70 @@ async function selectProvider(): Promise<Errorable<CloudProvider>> {
     return { succeeded: true, result: selectedProvider };
 }
 
-// adds cluster to local kubeconfig
-async function configureFromClusterKubernetes() {
+// Registers a named cluster node backed by its own kubeconfig file.
+async function configureFromClusterKubernetes(): Promise<void> {
     await debounceActivation();
-    const provider = await selectProvider();
-    if (failed(provider)){
-        vscode.window.showErrorMessage(provider.error[0]);
+
+    const kubeconfigUris = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        openLabel: 'Add Cluster'
+    });
+    if (!kubeconfigUris || kubeconfigUris.length !== 1) {
         return;
     }
 
-    const subscriptionId = await provider.result.prerequisites();
-    if (!subscriptionId) {
+    const kubeconfigUri = kubeconfigUris[0];
+    if (kubeconfigUri.scheme !== 'file') {
+        await vscode.window.showErrorMessage('Can only add a kubeconfig from the file system.');
         return;
     }
 
-    // currently AKS is our only provider
-    if (provider.result instanceof AKSProvider) {
-        const cluster = await provider.result.selectCluster(subscriptionId);
-        if (cluster) {
-            const kconfig = await provider.result.getKubeconfigYaml(subscriptionId, cluster.resourceGroup, cluster.name);
-            if (kconfig) {
-                mergeToKubeconfig(kconfig);
-            } else {
-                vscode.window.showErrorMessage("Failed to get kubeconfig");
+    try {
+        const kubeconfigText = await fs.readTextFile(kubeconfigUri.fsPath);
+        const importedContext = getKubeconfigContextDetails(kubeconfigText);
+        if (!importedContext) {
+            await vscode.window.showErrorMessage('The selected file does not contain a Kubernetes context.');
+            return;
+        }
+
+        const clusterName = await vscode.window.showInputBox({
+            prompt: 'Enter a name for the cluster',
+            value: importedContext.contextName,
+            validateInput: (value) => value.trim() ? undefined : 'Cluster name cannot be empty.'
+        });
+        if (clusterName === undefined) {
+            return;
+        }
+
+        const activeKubeconfig = getKubeconfigPath();
+        if (activeKubeconfig.pathType === 'host') {
+            const currentContext = await getCurrentContext(kubectl, { silent: true });
+            if (currentContext && !getConfiguredClusterNodes().some((node) => node.kubeconfigPath === activeKubeconfig.hostPath)) {
+                await addConfiguredClusterNode({
+                    contextName: currentContext.contextName,
+                    clusterName: currentContext.clusterName,
+                    userName: currentContext.userName,
+                    provider: currentContext.provider,
+                    displayName: currentContext.contextName,
+                    kubeconfigPath: activeKubeconfig.hostPath
+                });
             }
         }
+
+        if (!getKnownKubeconfigs().includes(kubeconfigUri.fsPath)) {
+            await addKnownKubeconfig(kubeconfigUri.fsPath);
+        }
+        await addConfiguredClusterNode({
+            ...importedContext,
+            displayName: clusterName.trim(),
+            kubeconfigPath: kubeconfigUri.fsPath
+        });
+        refreshExplorer();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await vscode.window.showErrorMessage(`Failed to add kubeconfig: ${message}`);
     }
 }
 
@@ -2261,6 +2303,42 @@ async function deleteContextKubernetes(explorerNode: ClusterExplorerNode) {
     if (await kubectlUtils.deleteCluster(kubectl, contextObj)) {
         refreshExplorer();
     }
+}
+
+async function renameContextNode(explorerNode: ClusterExplorerNode, treeProvider: explorer.KubernetesExplorer): Promise<void> {
+    if (!explorerNode || explorerNode.nodeType !== explorer.NODE_TYPES.context) {
+        return;
+    }
+
+    const contextName = explorerNode.contextName;
+    const displayName = await vscode.window.showInputBox({
+        prompt: 'Enter a display name for the cluster',
+        value: String((await explorerNode.getTreeItem()).label || contextName),
+        validateInput: (value) => value.trim() ? undefined : 'Cluster name cannot be empty.'
+    });
+    if (displayName === undefined) {
+        return;
+    }
+
+    if (!explorerNode.kubeconfigPath) {
+        const activeKubeconfig = getKubeconfigPath();
+        if (activeKubeconfig.pathType !== 'host') {
+            await vscode.window.showErrorMessage('Cluster display names are not supported for WSL kubeconfigs.');
+            return;
+        }
+        await addConfiguredClusterNode({
+            contextName,
+            clusterName: explorerNode.kubectlContext.clusterName,
+            userName: explorerNode.kubectlContext.userName,
+            provider: explorerNode.kubectlContext.provider,
+            displayName: displayName.trim(),
+            kubeconfigPath: activeKubeconfig.hostPath
+        });
+        treeProvider.refresh();
+        return;
+    }
+    await setClusterNodeName(explorerNode.kubeconfigPath, displayName.trim());
+    treeProvider.refresh(explorerNode);
 }
 
 async function copyKubernetes(explorerNode: ClusterExplorerNode) {
