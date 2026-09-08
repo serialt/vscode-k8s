@@ -1,4 +1,4 @@
-# Visual Studio Code Kubernetes Tools
+# Sugar-K8s
 
 ![Kubernetes Extension for Visual Studio Code logo](images/k8s-ext-logo/kefvsc-horizontal-colour.png)
 
@@ -358,4 +358,3 @@ The 'infer `kubectl` version' feature was inspired by @jakepearson's `k` utility
 
 Copyright Contributors to vscode-kubernetes-tools, established as
 vscode-kubernetes-tools a Series of LF Projects, LLC.
-
