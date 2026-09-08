@@ -31,7 +31,7 @@ jobs:
 
       - name: Get package version
         id: package_version
-        run: echo "current-version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: echo "current-version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Package VSIX
         run: npx vsce package --out "sugar-kubernetes-tools-${{ steps.package_version.outputs.current-version }}.vsix"
