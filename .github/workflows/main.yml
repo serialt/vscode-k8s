@@ -1,36 +1,36 @@
-name: Create GitHub Release
-# VSIX packaging, signing, and Marketplace publishing are handled by the
-# 1ES pipeline (.pipelines/1es-pipeline.yml). This workflow only creates
-# the GitHub release and tag for the version in package.json, using the
-# matching CHANGELOG.md section as the release body.
-on: [workflow_dispatch]
+# name: Create GitHub Release
+# # VSIX packaging, signing, and Marketplace publishing are handled by the
+# # 1ES pipeline (.pipelines/1es-pipeline.yml). This workflow only creates
+# # the GitHub release and tag for the version in package.json, using the
+# # matching CHANGELOG.md section as the release body.
+# on: [workflow_dispatch]
 
-jobs:
-  release:
-    name: release
-    runs-on: ubuntu-latest
-    permissions:
-        actions: read
-        contents: write
-        deployments: read
-        packages: none
-    steps:
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.1
-    - name: Get current package version
-      id: package_version
-      uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
-    - name: Check version is mentioned in Changelog
-      uses: mindsers/changelog-reader-action@1faaf50aa09d5793d9a100819973df801febfb31 # v2.4.0
-      id: changelog_reader
-      with:
-        version: ${{ steps.package_version.outputs.current-version }}
-        path: 'CHANGELOG.md'
-    - name: Create a GitHub Release
-      uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.package_version.outputs.current-version }}
-        name: ${{ steps.package_version.outputs.current-version }}
-        body: ${{ steps.changelog_reader.outputs.changes }}
+# jobs:
+#   release:
+#     name: release
+#     runs-on: ubuntu-latest
+#     permissions:
+#         actions: read
+#         contents: write
+#         deployments: read
+#         packages: none
+#     steps:
+#     - name: Checkout
+#       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.0.1
+#     - name: Get current package version
+#       id: package_version
+#       uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
+#     - name: Check version is mentioned in Changelog
+#       uses: mindsers/changelog-reader-action@1faaf50aa09d5793d9a100819973df801febfb31 # v2.4.0
+#       id: changelog_reader
+#       with:
+#         version: ${{ steps.package_version.outputs.current-version }}
+#         path: 'CHANGELOG.md'
+#     - name: Create a GitHub Release
+#       uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+#       env:
+#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#       with:
+#         tag_name: ${{ steps.package_version.outputs.current-version }}
+#         name: ${{ steps.package_version.outputs.current-version }}
+#         body: ${{ steps.changelog_reader.outputs.changes }}
