@@ -2090,6 +2090,7 @@ async function configureFromClusterKubernetes(): Promise<void> {
         canSelectFiles: true,
         canSelectFolders: false,
         canSelectMany: false,
+        defaultUri: vscode.Uri.file(path.join(os.homedir(), '.kube')),
         openLabel: 'Add Cluster'
     });
     if (!kubeconfigUris || kubeconfigUris.length !== 1) {
@@ -2338,7 +2339,8 @@ async function renameContextNode(explorerNode: ClusterExplorerNode, treeProvider
         return;
     }
     await setClusterNodeName(explorerNode.kubeconfigPath, displayName.trim());
-    treeProvider.refresh(explorerNode);
+    // Refresh the root so the explorer recreates context nodes with the persisted display name.
+    treeProvider.refresh();
 }
 
 async function copyKubernetes(explorerNode: ClusterExplorerNode) {

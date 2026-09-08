@@ -501,7 +501,7 @@
                 {
                     "command": "extension.vsKubernetesRenameContext",
                     "when": "view == extension.vsKubernetesExplorer && viewItem =~ /vsKubernetes\\.\\w*cluster.*/i",
-                    "group": "inline"
+                    "group": "0@3"
                 },
                 {
                     "command": "extension.vsKubernetesCopy",
